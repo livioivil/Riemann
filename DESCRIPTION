@@ -1,0 +1,12 @@
+Package: Riemann
+Version: 0.1
+Date: 2018-11-30
+Title: Riemann
+Author: Livio Finos, Marco Congedo
+Maintainer: Livio Finos <livio.finos@unipd.it>
+Description: Riemann 
+License: GPL (>= 2)
+RoxygenNote: 6.0.1
+Suggests: knitr,
+    rmarkdown
+VignetteBuilder: knitr
