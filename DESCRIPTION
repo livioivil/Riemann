@@ -4,9 +4,9 @@ Date: 2018-11-30
 Title: Riemann
 Author: Livio Finos, Marco Congedo
 Maintainer: Livio Finos <livio.finos@unipd.it>
-Description: Riemann 
+Description: tools useful for Riemannian geometry of the symmetric positive definite matrices manifold.  
 License: GPL (>= 2)
-RoxygenNote: 6.0.1
+RoxygenNote: 6.1.1
 Suggests: knitr,
     rmarkdown
 VignetteBuilder: knitr
