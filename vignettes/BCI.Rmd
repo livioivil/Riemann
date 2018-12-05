@@ -1,0 +1,237 @@
+---
+title: "Classification methods for Brain-Computer Interface EEG data"
+author: "Livio Finos, Marco Congedo"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Quick tutorial for Rieman package}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+<!-- \VignetteEngine{knitr::rmarkdown} -->
+
+# Introduction
+
+## Data Example
+Available on 
+<https://zenodo.org/record/1494240#.XARcSGhKg2x>
+
+In the Brain Invaders P300 paradigm, a repetition is composed of 12 flashes, of which 2 include the Target symbol (Target flashes) and 10 do not (non-Target flash). For this experiment, in the Training phases the number of flashes is fixed (80 Target flashes and 400 non-Target flashes). In the Online phases the number of Target and non-Target still are in a ratio 1/5, however their number is variable because the Brain Invaders works with a fixed number of game levels, however the number of repetitions needed to destroy the target (hence to proceed to the next level) depends on the user’s performance. 
+
+In any case, since the classes are unbalanced, an appropriate score must be used for quantifying the performance of classification methods (e.g., balanced accuracy, AUC methods, etc).
+
+
+Data used: Subject 11
+
+  - filename: '3.gdf'
+    experimental_condition: nonadaptive
+    type: training
+  - filename: '4.gdf'
+    experimental_condition: nonadaptive
+    type: online    
+
+
+```{r}
+rm(list=ls())
+# library(readr)
+# train <- read_delim("C:/Users/livio/Downloads/sub11_s3_epocs.txt", delim = "\t", escape_double = FALSE, trim_ws = TRUE)
+# train$X18=NULL
+# # View(train)
+# # table(train$X1)
+# # plot(train$X1[(1:700)*1000],type="l")
+# 
+# 
+# test <- read_delim("C:/Users/livio/Downloads/sub11_s4_epocs.txt", delim = "\t", escape_double = FALSE, trim_ws = TRUE)
+# # View(test)
+# # table(test$X1)
+# test$X18=NULL
+# 
+# # check che i tempi coincidano:
+# all(unique(test$X1)==unique(train$X1))
+# 
+# timepoints=unique(train$X1)
+# ntimepoints=length(timepoints)
+# 
+# test=test[,-1,]
+# dim(test)
+# train=train[,-1]
+# 
+# test=as.matrix(test)
+# train=as.matrix(train)
+# 
+# # rashape datasets as 3D array
+# train2=array(train,c(ntimepoints,nrow(train)/ntimepoints,ncol(train)))
+# train2=aperm(train2,c(1,3,2))
+# test2=array(test,c(ntimepoints,nrow(test)/ntimepoints,ncol(test)))
+# test2=aperm(test2,c(1,3,2))
+# 
+# save(test2,timepoints,ntimepoints,file="test2.Rdata")
+# save(train2,timepoints,ntimepoints,file="train2.Rdata")
+
+load(file="test2.Rdata")
+load(file="train2.Rdata")
+
+```
+
+Eventi:
+
+```{r}
+library(readr)
+eventi_s3 <- read_table2("C:/Users/livio/Dropbox (DPSS)/didattica/neuroQ/7_BCI/eventi_s3.csv")
+# View(eventi_s3)
+eventi_s4 <- read_table2("C:/Users/livio/Dropbox (DPSS)/didattica/neuroQ/7_BCI/eventi_s4.csv")
+# View(eventi_s4)
+
+#rename and reorder the lables
+eventi_s3$type=factor(eventi_s3$type)
+levels(eventi_s3$type)=c("Target","NonTarget")
+eventi_s3$type=factor(eventi_s3$type,levels = c("NonTarget","Target"))
+
+eventi_s4$type=factor(eventi_s4$type)
+levels(eventi_s4$type)=c("Target","NonTarget")
+eventi_s4$type=factor(eventi_s4$type,levels = c("NonTarget","Target"))
+
+table(eventi_s3$type)
+table(eventi_s4$type)
+
+```
+
+## Means
+
+```{r}
+Mtrain_target=apply(train2[,,eventi_s3$type=="Target"],c(1,2),mean)
+Mtrain_nontarget=apply(train2[,,eventi_s3$type=="NonTarget"],c(1,2),mean)
+
+dim(Mtrain_target)
+dim(Mtrain_nontarget)
+
+matplot(timepoints,Mtrain_target+matrix(1:16,byrow = TRUE,nrow(Mtrain_target),ncol(Mtrain_target)),type="l",lty=1,col=2)
+
+matplot(timepoints,Mtrain_nontarget+matrix(1:16,byrow = TRUE,nrow(Mtrain_target),ncol(Mtrain_target)),type="l",lty=1,col=1)
+
+matplot(timepoints,Mtrain_target-Mtrain_nontarget+matrix(1:16,byrow = TRUE,nrow(Mtrain_target),ncol(Mtrain_target)),type="l",lty=1,col=3)
+
+
+```
+
+## Select 0 to 650 ms
+
+```{r}
+selct_timepnts=which((timepoints>0)&(timepoints<650))
+
+Mtrain_nontarget=Mtrain_nontarget[selct_timepnts,]
+Mtrain_target=Mtrain_target[selct_timepnts,]
+
+test2=test2[selct_timepnts,,]
+
+```
+
+## Euclidean distance
+
+```{r}
+dist_frobenius <- function(x,y){
+  sqrt(sum((x-y)^2))
+}
+
+dist_frobenius(test2[,,1],Mtrain_nontarget)
+
+# dist from nontarget - dist target.
+# positive score means closer to target
+diff_dist=sapply(1:dim(test2)[3],function(i)
+  dist_frobenius(test2[,,i],Mtrain_nontarget)-dist_frobenius(test2[,,i],Mtrain_target))
+
+plot(diff_dist,eventi_s4$type)
+
+table(hat_target=diff_dist>=0,True_target=eventi_s4$type)
+
+eventi_s4$estimate=diff_dist>=0
+eventi_s4$estimate=factor(eventi_s4$estimate)
+levels(eventi_s4$estimate)=levels(eventi_s4$type)
+
+library(caret)
+#Confusion Matrix
+mat <- confusionMatrix(eventi_s4$estimate, eventi_s4$type, positive="Target")
+#Confusion matrix
+mat$table
+
+
+# Sensitivity = TP/(TP+FN)
+mat$byClass["Sensitivity"]
+
+# Specificity = TN/(TN+FP)  
+mat$byClass["Specificity"]
+
+
+mat$overall["Accuracy"]
+
+library(pROC)
+roc.val <- roc(type~diff_dist, eventi_s4)
+plot(roc.val, main="pROC package ROC plot") 
+roc.val$auc
+
+
+```
+
+## Riemann
+
+```{r}
+
+# NON Target:
+XNT=data.frame(cbind(test2[,,6],Mtrain_nontarget))
+
+library(reshape2)
+melted_cormat <- melt(cor(XNT))
+library(ggplot2)
+ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile()
+
+
+# Target:
+XT=data.frame(cbind(test2[,,6],Mtrain_target))
+
+library(reshape2)
+melted_cormat <- melt(cor(XT))
+library(ggplot2)
+ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile()
+
+
+eventi_s4$type[6]
+
+
+library(Riemann)
+dist_Riemann(cor(test2[,,1]),cor(Mtrain_nontarget))
+# dist from nontarget - dist target.
+# positive score means closer to target
+diff_dist_Riem=sapply(1:dim(test2)[3],function(i)
+  dist_Riemann(cor(test2[,,i]),cor(Mtrain_nontarget))-dist_Riemann(cor(test2[,,i]),cor(Mtrain_target)))
+
+plot(diff_dist_Riem,eventi_s4$type)
+
+eventi_s4$estimate=diff_dist_Riem>=0
+eventi_s4$estimate=factor(eventi_s4$estimate)
+levels(eventi_s4$estimate)=levels(eventi_s4$type)
+
+library(caret)
+#Confusion Matrix
+mat <- confusionMatrix(eventi_s4$estimate, eventi_s4$type, positive="Target")
+#Confusion matrix
+mat$table
+
+
+# Sensitivity = TP/(TP+FN)
+mat$byClass["Sensitivity"]
+
+# Specificity = TN/(TN+FP)  
+mat$byClass["Specificity"]
+
+
+mat$overall["Accuracy"]
+
+library(pROC)
+roc.val <- roc(type~diff_dist, eventi_s4)
+plot(roc.val, main="pROC package ROC plot") 
+roc.val$auc
+
+```
+
